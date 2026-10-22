@@ -1,0 +1,27 @@
+# Codemagic CI: builds a debug APK of Inkly (HeliBoard-based).
+workflows:
+  debug-apk:
+    name: Debug APK
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    environment:
+      java: 17
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: inkly-heliboard
+          include: true
+    scripts:
+      - name: Accept Android SDK licenses
+        script: |
+          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+      - name: Build debug APK
+        script: |
+          chmod +x ./gradlew
+          ./gradlew assembleDebug --stacktrace
+      - name: Show where the APK landed
+        script: |
+          find . -name "*.apk" -not -path "./.git/*" -exec ls -la {} \;
+    artifacts:
+      - app/build/outputs/apk/debug/*.apk

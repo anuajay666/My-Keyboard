@@ -1,0 +1,16 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+  <!-- Inkly: an ink drop with a small highlight -->
+  <path
+      android:pathData="M54,24 C54,24 36,46 36,60 A18,18 0 0 0 72,60 C72,46 54,24 54,24 Z"
+      android:fillColor="#FFFFFF"/>
+  <path
+      android:pathData="M46,60 A8,8 0 0 0 54,68"
+      android:strokeWidth="3"
+      android:strokeColor="#00000033"
+      android:strokeLineCap="round"
+      android:fillColor="#00000000"/>
+</vector>

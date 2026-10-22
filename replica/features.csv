@@ -1,0 +1,26 @@
+feature,area,priority,original,clone,notes
+Basic typing keyboard (letters symbols numbers),keyboard,must,yes,no,Android IME; QWERTY first
+Auto-correct and spell check,keyboard,must,yes,no,Original recently announced "much better auto correction"
+Auto-capitalise sentence start and punctuation,keyboard,must,yes,no,One visible review reports this failing
+Enable keyboard onboarding flow,onboarding,must,yes,no,Enable then select as input method
+Fix grammar and spelling in one tap with Replace,AI writing,must,yes,no,Core loop
+Change tone of text (preset tones),AI writing,must,yes,no,Site lists 13 named tones
+AI assistants list with prompt input,AI writing,must,yes,no,Site says 20+; Play says 30+
+Free tier with usage limits,billing,must,yes,no,Exact limits unverified
+Premium subscription via Play Billing,billing,must,yes,no,From $4.99/month per pricing meta; plan details unverified
+Custom tone added by the user,AI writing,should,yes,no,
+Create custom AI assistant with own instructions,AI writing,should,yes,no,
+Clever Reply: suggested replies to last message,AI writing,should,yes,no,Needs Accessibility permission
+Expand a short draft into a full reply,AI writing,should,yes,no,
+AI translation preserving tone (40+ languages),AI writing,should,yes,no,
+Voice typing with cleanup (punctuation fillers lists),voice,should,yes,no,
+Keyboard themes and colours,customisation,should,yes,no,
+Resize keyboard height and position,customisation,should,yes,no,Original only resizes from above per a review: opportunity
+Floating keyboard,customisation,could,yes,no,Added in latest update
+Multi-language typing layouts,keyboard,could,yes,no,Count of supported typing languages unverified
+Paraphrase and rewrite alternatives,AI writing,could,yes,no,
+Sync account and plan across devices,account,could,yes,no,FAQ lists multi-device
+Chrome Edge Firefox extensions,platforms,could,yes,skip,Out of slice; separate product
+iOS keyboard,platforms,could,yes,skip,Out of slice for now
+Desktop app,platforms,could,yes,skip,Out of slice for now
+Affiliate programme,growth,could,yes,skip,Business programme not a product feature
