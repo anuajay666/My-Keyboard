@@ -1,4 +1,4 @@
-# Codemagic CI: builds a debug APK of the keyboard (arm64 only, for the Galaxy S25 Ultra).
+# Codemagic CI: builds a debug APK of the keyboard.
 workflows:
   debug-apk:
     name: Debug APK
@@ -23,7 +23,14 @@ workflows:
       - name: Build debug APK
         script: |
           chmod +x ./gradlew
-          ./gradlew assembleDebug -Pandroid.injected.build.abi=arm64-v8a --stacktrace
+          ./gradlew assembleDebug --stacktrace
+      - name: Check the APK (flags and signature)
+        script: |
+          BT=$(ls -d "$ANDROID_SDK_ROOT"/build-tools/* | sort -V | tail -1)
+          APK=app/build/intermediates/apk/debug/app-debug.apk
+          "$BT/aapt2" dump badging "$APK" | grep -E "^package|testOnly|sdkVersion|targetSdk|native-code" || true
+          "$BT/aapt2" dump xmltree "$APK" --file AndroidManifest.xml | grep -i -E "testOnly|debuggable" || true
+          "$BT/apksigner" verify --verbose --print-certs "$APK" | head -8 || true
       - name: Show where the APK landed
         script: |
           find . -name "*.apk" -not -path "./.git/*" -exec ls -la {} \;
