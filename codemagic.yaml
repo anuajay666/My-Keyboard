@@ -1,0 +1,28 @@
+# Codemagic CI: builds a debug APK of the keyboard (arm64 only, for the Galaxy S25 Ultra).
+workflows:
+  debug-apk:
+    name: Debug APK
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    environment:
+      java: 17
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+    scripts:
+      - name: Install Rust toolchain (needed by the native library)
+        script: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+          "$HOME/.cargo/bin/rustc" --version
+      - name: Accept Android SDK licenses
+        script: |
+          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+      - name: Build debug APK
+        script: |
+          chmod +x ./gradlew
+          ./gradlew assembleDebug -Pandroid.injected.build.abi=arm64-v8a --stacktrace
+    artifacts:
+      - app/build/outputs/apk/debug/*.apk
