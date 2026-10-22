@@ -28,5 +28,5 @@ workflows:
         script: |
           find . -name "*.apk" -not -path "./.git/*" -exec ls -la {} \;
     artifacts:
+      - app/build/intermediates/apk/debug/*.apk
       - app/build/outputs/**/*.apk
-      - build/**/*.apk
