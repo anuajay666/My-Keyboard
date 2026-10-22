@@ -27,6 +27,7 @@ object AiBridge {
 object AiLauncher {
     private const val MAX_CHARS = 200_000
 
+    @JvmStatic
     fun launch(ime: InputMethodService) {
         val ic = ime.currentInputConnection
         var scope = Scope.CURSOR
