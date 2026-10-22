@@ -11,13 +11,13 @@ android {
 
     defaultConfig {
         applicationId = "com.anuajay.inkly"
-        minSdk = 21
+        minSdk = 31 // on-device AI (LiteRT-LM) needs Android 12+
         targetSdk = 37
         versionCode = 4300
         versionName = "4.3-beta1"
         ndk {
             abiFilters.clear()
-            abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64"))
+            abiFilters.addAll(listOf("arm64-v8a"))
         }
         proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
     }
@@ -116,6 +116,7 @@ android {
 
 dependencies {
     // androidx
+    implementation("com.google.ai.edge.litertlm:litertlm-android:0.13.1") // on-device Gemma
     implementation("androidx.core:core-ktx:1.17.0") // 1.18.0 requires minSdk 23
     implementation("androidx.recyclerview:recyclerview:1.4.0")
     implementation("androidx.autofill:autofill:1.3.0")
