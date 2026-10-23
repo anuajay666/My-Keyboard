@@ -786,7 +786,7 @@ public class LatinIME extends InputMethodService implements
     public void onStartInputView(final EditorInfo editorInfo, final boolean restarting) {
         mHandler.onStartInputView(editorInfo, restarting);
         mStatsUtilsManager.onStartInputView();
-        if (helium314.keyboard.ai.AiBridge.INSTANCE.hasPending())
+        if (helium314.keyboard.ai.AiBridge.hasPending(this))
             new android.os.Handler(getMainLooper()).postDelayed(
                     () -> helium314.keyboard.ai.AiLauncher.applyPending(this), 300);
     }
@@ -1733,9 +1733,9 @@ public class LatinIME extends InputMethodService implements
         startActivity(intent);
     }
 
-    public void launchAi() {
+    public void launchAi(int tab, boolean autorun) {
         mInputLogic.commitTyped(mSettings.getCurrent(), LastComposedWord.NOT_A_SEPARATOR);
-        helium314.keyboard.ai.AiLauncher.launch(this);
+        helium314.keyboard.ai.AiLauncher.launch(this, tab, autorun);
     }
 
     public void launchEmojiSearch() {

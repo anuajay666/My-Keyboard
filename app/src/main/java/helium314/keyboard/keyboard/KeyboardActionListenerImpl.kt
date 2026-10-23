@@ -105,7 +105,11 @@ class KeyboardActionListenerImpl(private val latinIME: LatinIME, private val inp
 
     override fun onCodeInput(primaryCode: Int, x: Int, y: Int, isKeyRepeat: Boolean) {
         when (primaryCode) {
-            KeyCode.AI -> { latinIME.launchAi(); return }
+            KeyCode.AI -> { latinIME.launchAi(2, false); return }
+            KeyCode.AI_FIX -> { latinIME.launchAi(0, true); return }
+            KeyCode.AI_TONE -> { latinIME.launchAi(1, false); return }
+            KeyCode.AI_ASSIST -> { latinIME.launchAi(2, false); return }
+            KeyCode.AI_TRANSLATE -> { latinIME.launchAi(3, false); return }
             KeyCode.TOGGLE_AUTOCORRECT -> return settings.toggleAutoCorrect()
             KeyCode.TOGGLE_INCOGNITO_MODE -> {
                 settings.toggleAlwaysIncognitoMode()

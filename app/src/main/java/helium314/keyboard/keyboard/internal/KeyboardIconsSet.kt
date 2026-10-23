@@ -158,6 +158,10 @@ class KeyboardIconsSet private constructor() {
                     ToolbarKey.SPLIT -> R.drawable.ic_ime_switcher
                     ToolbarKey.BACKGROUND_GATHERING -> R.drawable.ic_settings_gesture
                     ToolbarKey.AI -> R.drawable.ic_ai
+                    ToolbarKey.AI_FIX -> R.drawable.ic_ai_fix
+                    ToolbarKey.AI_TONE -> R.drawable.ic_ai
+                    ToolbarKey.AI_ASSIST -> R.drawable.ic_ai_assist
+                    ToolbarKey.AI_TRANSLATE -> R.drawable.ic_ai_translate
                 })
             }
         } }
@@ -223,6 +227,10 @@ class KeyboardIconsSet private constructor() {
                     ToolbarKey.SPLIT -> R.drawable.ic_ime_switcher
                     ToolbarKey.BACKGROUND_GATHERING -> R.drawable.ic_settings_gesture
                     ToolbarKey.AI -> R.drawable.ic_ai
+                    ToolbarKey.AI_FIX -> R.drawable.ic_ai_fix
+                    ToolbarKey.AI_TONE -> R.drawable.ic_ai
+                    ToolbarKey.AI_ASSIST -> R.drawable.ic_ai_assist
+                    ToolbarKey.AI_TRANSLATE -> R.drawable.ic_ai_translate
                 })
             }
         } }
@@ -288,6 +296,10 @@ class KeyboardIconsSet private constructor() {
                     ToolbarKey.SPLIT -> R.drawable.ic_ime_switcher
                     ToolbarKey.BACKGROUND_GATHERING -> R.drawable.ic_settings_gesture
                     ToolbarKey.AI -> R.drawable.ic_ai
+                    ToolbarKey.AI_FIX -> R.drawable.ic_ai_fix
+                    ToolbarKey.AI_TONE -> R.drawable.ic_ai
+                    ToolbarKey.AI_ASSIST -> R.drawable.ic_ai_assist
+                    ToolbarKey.AI_TRANSLATE -> R.drawable.ic_ai_translate
                 })
             }
         } }

@@ -183,6 +183,10 @@ object KeyCode {
     const val INLINE_EMOJI_SEARCH_DONE =  -10051
     const val BACKGROUND_GATHERING =         -10052 // will be useless after removal of gesture data gathering (keep for compatibility)
     const val AI =                          -10060 // Inkly AI panel
+    const val AI_FIX =                      -10061
+    const val AI_TONE =                     -10062
+    const val AI_ASSIST =                   -10063
+    const val AI_TRANSLATE =                -10064
     const val BACKGROUND_GATHERING_TEMP_OFF =-10053 // will be useless after removal of gesture data gathering (keep for compatibility)
     const val DPAD =                      -10054
 

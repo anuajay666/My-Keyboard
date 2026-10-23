@@ -5,7 +5,9 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -80,9 +82,19 @@ import kotlinx.coroutines.withContext
 class AiActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AiLog.installCrashHandler(this)
+        AiLog.add(this, "panel opened")
         AiModelManager.refresh(this)
-        val session = AiBridge.session ?: AiSession("", Scope.CURSOR)
-        setContent { InklyTheme { AiScreen(session, onClose = { finish() }) } }
+        val session = AiBridge.readSession(this)
+        val tab = intent.getIntExtra("tab", 0)
+        val autorun = intent.getBooleanExtra("autorun", false)
+        setContent { InklyTheme { AiScreen(session, tab, autorun, onClose = { finish() }) } }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        recreate() // fresh text and tab from the keyboard
     }
 
     override fun onStop() {
@@ -103,12 +115,12 @@ private val tabs = listOf("Fix & polish", "Tone", "Assistants", "Translate", "Re
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun AiScreen(session: AiSession, onClose: () -> Unit) {
+private fun AiScreen(session: AiSession, initialTab: Int, autorun: Boolean, onClose: () -> Unit) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
     val modelState by AiModelManager.state.collectAsState()
     var text by remember { mutableStateOf(session.original) }
-    var tab by remember { mutableIntStateOf(0) }
+    var tab by remember { mutableIntStateOf(initialTab.coerceIn(0, tabs.lastIndex)) }
     var running by remember { mutableStateOf(false) }
     var progress by remember { mutableStateOf("") }
     var options by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -122,17 +134,22 @@ private fun AiScreen(session: AiSession, onClose: () -> Unit) {
     var dialogFor by remember { mutableStateOf<String?>(null) }
     var voiceLang by remember { mutableStateOf("") }
     var job by remember { mutableStateOf<Job?>(null) }
+    var listening by remember { mutableStateOf(false) }
+    var voiceNote by remember { mutableStateOf<String?>(null) }
+    var showLog by remember { mutableStateOf(false) }
+    var recognizer by remember { mutableStateOf<SpeechRecognizer?>(null) }
 
     LaunchedEffect(Unit) {
-        // empty field on the Reply tab: offer the copied message
+        // empty field: offer the copied text (e.g. a message to reply to)
         if (session.original.isEmpty()) {
             val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            val clip = cm.primaryClip?.getItemAt(0)?.text?.toString().orEmpty()
+            val clip = try { cm.primaryClip?.getItemAt(0)?.text?.toString().orEmpty() } catch (_: Throwable) { "" }
             if (clip.isNotBlank()) text = clip
         }
     }
 
     fun start(tasks: List<AiTask>, input: String) {
+        AiLog.add(ctx, "start ${tasks.firstOrNull()?.id} on ${input.length} chars")
         if (input.isBlank()) { Toast.makeText(ctx, "Type or select some text first", Toast.LENGTH_SHORT).show(); return }
         lastTasks = tasks; lastInput = input
         running = true; error = null; options = emptyList(); notes = emptyList(); chosen = 0
@@ -154,9 +171,60 @@ private fun AiScreen(session: AiSession, onClose: () -> Unit) {
         }
     }
 
-    val voice = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
-        val spoken = r.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
-        if (!spoken.isNullOrBlank()) { text = if (text.isBlank()) spoken else text.trimEnd() + " " + spoken }
+    fun stopListening() { try { recognizer?.stopListening() } catch (_: Throwable) {}; listening = false }
+
+    fun beginListening() {
+        try {
+            if (!SpeechRecognizer.isRecognitionAvailable(ctx)) { voiceNote = "This phone has no speech recognition service available."; return }
+            val r = SpeechRecognizer.createSpeechRecognizer(ctx)
+            recognizer = r
+            val base = text
+            r.setRecognitionListener(object : RecognitionListener {
+                private fun join(spoken: String) = if (base.isBlank()) spoken else base.trimEnd() + " " + spoken
+                override fun onReadyForSpeech(params: Bundle?) { voiceNote = "Listening… speak now" }
+                override fun onBeginningOfSpeech() {}
+                override fun onRmsChanged(rmsdB: Float) {}
+                override fun onBufferReceived(buffer: ByteArray?) {}
+                override fun onEndOfSpeech() { voiceNote = "Processing…" }
+                override fun onError(error: Int) {
+                    listening = false
+                    voiceNote = when (error) {
+                        SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Did not hear anything. Tap Speak and try again."
+                        SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Microphone permission is off for Inkly."
+                        SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Speech service needs internet for this language."
+                        SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Speech service is busy, try again."
+                        else -> "Voice typing error ($error)."
+                    }
+                    AiLog.add(ctx, "voice error $error")
+                }
+                override fun onResults(results: Bundle?) {
+                    listening = false; voiceNote = null
+                    results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.let { if (it.isNotBlank()) text = join(it) }
+                }
+                override fun onPartialResults(partialResults: Bundle?) {
+                    partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.let { if (it.isNotBlank()) text = join(it) }
+                }
+                override fun onEvent(eventType: Int, params: Bundle?) {}
+            })
+            val i = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            if (voiceLang.isNotEmpty()) i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, voiceLang)
+            listening = true; voiceNote = "Starting…"
+            r.startListening(i)
+        } catch (e: Throwable) {
+            listening = false; voiceNote = "Voice typing could not start: ${e.message}"
+            AiLog.add(ctx, "voice start failed: $e")
+        }
+    }
+
+    val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) beginListening() else voiceNote = "Allow the microphone for Inkly (phone Settings > Apps > Inkly > Permissions) to use voice typing."
+    }
+    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { try { recognizer?.destroy() } catch (_: Throwable) {} } }
+
+    LaunchedEffect(modelState) {
+        if (autorun && modelState == ModelState.Ready && text.isNotBlank() && lastTasks.isEmpty()) start(listOf(AiCatalog.fix), text)
     }
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) AiModelManager.importFrom(ctx, uri) }
 
@@ -186,15 +254,16 @@ private fun AiScreen(session: AiSession, onClose: () -> Unit) {
                             cm.primaryClip?.getItemAt(0)?.text?.toString()?.let { text = it }
                         }) { Text("Paste copied") }
                         OutlinedButton(onClick = {
-                            val i = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                            if (voiceLang.isNotEmpty()) i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, voiceLang)
-                            try { voice.launch(i) } catch (e: Exception) { Toast.makeText(ctx, "No speech recognizer available", Toast.LENGTH_SHORT).show() }
-                        }) { Text("Speak") }
+                            if (listening) stopListening()
+                            else if (ctx.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED) beginListening()
+                            else micPermission.launch(android.Manifest.permission.RECORD_AUDIO)
+                        }) { Text(if (listening) "Stop" else "Speak") }
                         FilterChip(selected = voiceLang == "", onClick = { voiceLang = "" }, label = { Text("Auto") })
                         FilterChip(selected = voiceLang == "ml-IN", onClick = { voiceLang = "ml-IN" }, label = { Text("മലയാളം") })
                         FilterChip(selected = voiceLang == "en-IN", onClick = { voiceLang = "en-IN" }, label = { Text("English") })
                     }
 
+                    voiceNote?.let { Text(it, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     ScrollableTabRow(selectedTabIndex = tab, edgePadding = 0.dp) {
                         tabs.forEachIndexed { i, t -> Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t) }) }
                     }
@@ -253,7 +322,7 @@ private fun AiScreen(session: AiSession, onClose: () -> Unit) {
                         val insertOnly = task?.insertOnly == true || session.scope == Scope.CURSOR
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(onClick = {
-                                AiBridge.setPending(AiPending(session, options[chosen], insertOnly))
+                                AiBridge.setPending(ctx, AiPending(session, options[chosen], insertOnly))
                                 onClose()
                             }) { Text(if (insertOnly) "Insert" else "Replace") }
                             OutlinedButton(onClick = {
@@ -265,7 +334,18 @@ private fun AiScreen(session: AiSession, onClose: () -> Unit) {
                         }
                     }
                     Spacer(Modifier.height(8.dp))
-                    TextButton(onClick = { AiModelManager.delete(ctx) }) { Text("Remove AI model from this phone", fontSize = 12.sp) }
+                    Row {
+                        TextButton(onClick = { AiModelManager.delete(ctx) }) { Text("Remove AI model", fontSize = 12.sp) }
+                        TextButton(onClick = { showLog = !showLog }) { Text(if (showLog) "Hide diagnostics" else "Diagnostics", fontSize = 12.sp) }
+                    }
+                    if (showLog) {
+                        Text(AiLog.read(ctx).ifBlank { "(empty)" }, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        TextButton(onClick = {
+                            val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            cm.setPrimaryClip(ClipData.newPlainText("Inkly AI log", AiLog.read(ctx)))
+                            Toast.makeText(ctx, "Log copied", Toast.LENGTH_SHORT).show()
+                        }) { Text("Copy log") }
+                    }
                 }
             }
         }

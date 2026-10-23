@@ -11,6 +11,7 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
     <uses-permission android:name="android.permission.READ_USER_DICTIONARY" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" /> <!-- only for the AI panel voice typing -->
     <uses-permission android:name="android.permission.INTERNET" /> <!-- only for the one-time AI model download -->
     <uses-permission android:name="android.permission.WRITE_USER_DICTIONARY" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
@@ -92,8 +93,9 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
             android:windowSoftInputMode="adjustResize|stateAlwaysVisible" android:configChanges="orientation|screenSize"/>
 
         <activity android:name="helium314.keyboard.ai.AiActivity" android:exported="false"
+            android:process=":ai" android:taskAffinity="" android:launchMode="singleTask"
             android:theme="@style/TransparentActivityTheme" android:excludeFromRecents="true"
-            android:windowSoftInputMode="adjustResize" android:configChanges="orientation|screenSize|keyboardHidden"/>
+            android:windowSoftInputMode="adjustResize" android:configChanges="orientation|screenSize|keyboardHidden|uiMode|smallestScreenSize|screenLayout"/>
 
         <!-- Broadcast receivers -->
         <receiver android:name="SystemBroadcastReceiver"
@@ -134,6 +136,8 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/gesture_data_path"/>
         </provider>
+        <uses-native-library android:name="libOpenCL.so" android:required="false" />
+        <uses-native-library android:name="libvndksupport.so" android:required="false" />
     </application>
 
     <queries>
@@ -143,6 +147,10 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
             <!--<action android:name="android.view.InputMethod" />-->
             <action android:name="*" />
         </intent>
+
+        <!-- AI panel voice typing -->
+        <intent><action android:name="android.speech.RecognitionService" /></intent>
+        <intent><action android:name="android.speech.action.RECOGNIZE_SPEECH" /></intent>
 
         <!-- To detect names of installed apps -->
         <intent>

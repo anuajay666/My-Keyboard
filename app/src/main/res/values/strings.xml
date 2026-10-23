@@ -137,6 +137,10 @@
     <!-- Option to enable auto correction -->
     <string name="autocorrect">Auto-correction</string>
     <string name="ai">AI</string>
+    <string name="ai_fix">Fix grammar</string>
+    <string name="ai_tone">Change tone</string>
+    <string name="ai_assist">AI assistants</string>
+    <string name="ai_translate">Translate</string>
     <!-- Description for auto correction -->
     <string name="auto_correction_summary">Spacebar and punctuation automatically correct mistyped words</string>
     <!-- Option to enable auto correction for many fields that do not request auto correction -->

@@ -96,6 +96,10 @@ fun getCodeForToolbarKey(key: ToolbarKey) = Settings.getInstance().getCustomTool
     FLOATING -> KeyCode.TOGGLE_FLOATING_WINDOW
     BACKGROUND_GATHERING -> KeyCode.BACKGROUND_GATHERING
     AI -> KeyCode.AI
+    AI_FIX -> KeyCode.AI_FIX
+    AI_TONE -> KeyCode.AI_TONE
+    AI_ASSIST -> KeyCode.AI_ASSIST
+    AI_TRANSLATE -> KeyCode.AI_TRANSLATE
 }
 
 fun getCodeForToolbarKeyLongClick(key: ToolbarKey) = Settings.getInstance().getCustomToolbarLongpressCode(key) ?: when (key) {
@@ -122,7 +126,7 @@ fun getCodeForToolbarKeyLongClick(key: ToolbarKey) = Settings.getInstance().getC
 enum class ToolbarKey {
     VOICE, CLIPBOARD, NUMPAD, DPAD, UNDO, REDO, SETTINGS, SELECT_ALL, SELECT_WORD, COPY, CUT, PASTE, ONE_HANDED, FLOATING, SPLIT,
     INCOGNITO, AUTOCORRECT, CLEAR_CLIPBOARD, CLOSE_HISTORY, EMOJI, LEFT, RIGHT, UP, DOWN, WORD_LEFT, WORD_RIGHT,
-    PAGE_UP, PAGE_DOWN, FULL_LEFT, FULL_RIGHT, PAGE_START, PAGE_END, BACKGROUND_GATHERING, AI
+    PAGE_UP, PAGE_DOWN, FULL_LEFT, FULL_RIGHT, PAGE_START, PAGE_END, BACKGROUND_GATHERING, AI, AI_FIX, AI_TONE, AI_ASSIST, AI_TRANSLATE
 }
 
 enum class ToolbarMode {
@@ -132,7 +136,7 @@ enum class ToolbarMode {
 val toolbarKeyStrings = entries.associateWithTo(EnumMap(ToolbarKey::class.java)) { it.toString().lowercase(Locale.US) }
 
 val defaultToolbarPref by lazy {
-    val default = listOf(AI, SETTINGS, VOICE, CLIPBOARD, UNDO, REDO, SELECT_WORD, COPY, PASTE, LEFT, RIGHT)
+    val default = listOf(AI_FIX, AI_TONE, AI_ASSIST, AI_TRANSLATE, EMOJI, CLIPBOARD, SETTINGS, VOICE, UNDO, REDO, SELECT_WORD, COPY, PASTE, LEFT, RIGHT)
     val others = entries.filterNot { it in default || it == CLOSE_HISTORY }
     default.joinToString(Separators.ENTRY) { it.name + Separators.KV + true } + Separators.ENTRY +
             others.joinToString(Separators.ENTRY) { it.name + Separators.KV + false }
@@ -163,8 +167,10 @@ private fun upgradeToolbarPref(prefs: SharedPreferences, pref: String, default: 
     splitDefault.forEach { entry ->
         val keyWithSeparator = entry.substringBefore(Separators.KV) + Separators.KV
         if (list.none { it.startsWith(keyWithSeparator) }) {
-            if (keyWithSeparator == ToolbarKey.AI.name + Separators.KV && pref == Settings.PREF_TOOLBAR_KEYS)
-                list.add(0, "${keyWithSeparator}true") // Inkly: AI key shows up first for existing installs
+            val aiKeys = listOf(ToolbarKey.AI_FIX, ToolbarKey.AI_TONE, ToolbarKey.AI_ASSIST, ToolbarKey.AI_TRANSLATE)
+            val aiIndex = aiKeys.indexOfFirst { keyWithSeparator == it.name + Separators.KV }
+            if (aiIndex >= 0 && pref == Settings.PREF_TOOLBAR_KEYS)
+                list.add(aiIndex, "${keyWithSeparator}true") // Inkly: the four AI keys show up first for existing installs
             else
                 list.add("${keyWithSeparator}false")
         }

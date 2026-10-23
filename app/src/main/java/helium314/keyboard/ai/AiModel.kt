@@ -153,24 +153,46 @@ object AiEngine {
 
     private fun ensure(ctx: Context): Engine = synchronized(lock) {
         engine?.let { return it }
-        val cfg = EngineConfig(
-            modelPath = AiModelManager.modelFile(ctx).absolutePath,
-            backend = Backend.CPU(),
-            maxNumTokens = 4096,
-            cacheDir = ctx.cacheDir.absolutePath,
-        )
-        Engine(cfg).also { it.initialize(); engine = it }
+        val prefs = ctx.getSharedPreferences("inkly_ai", 0)
+        val path = AiModelManager.modelFile(ctx).absolutePath
+        // if the previous start never finished, the native code crashed: use the gentler setting this time
+        val crashedBefore = prefs.getBoolean("engine_loading", false)
+        if (crashedBefore) AiLog.add(ctx, "previous engine start did not finish (native crash?) - using safe settings")
+        val attempts = listOf(
+            "full" to EngineConfig(modelPath = path, backend = Backend.CPU(), maxNumTokens = 4096, cacheDir = ctx.cacheDir.absolutePath),
+            "safe" to EngineConfig(modelPath = path, backend = Backend.CPU(), maxNumTokens = 2048),
+        ).let { if (crashedBefore) it.reversed() else it }
+        var last: Throwable? = null
+        for ((name, cfg) in attempts) {
+            try {
+                AiLog.add(ctx, "loading model ($name) ${File(path).length() / 1_000_000} MB")
+                prefs.edit().putBoolean("engine_loading", true).commit()
+                val e = Engine(cfg)
+                e.initialize()
+                prefs.edit().putBoolean("engine_loading", false).commit()
+                AiLog.add(ctx, "model loaded ($name)")
+                engine = e
+                return e
+            } catch (t: Throwable) {
+                prefs.edit().putBoolean("engine_loading", false).commit()
+                AiLog.add(ctx, "load failed ($name): $t")
+                last = t
+            }
+        }
+        throw RuntimeException("Could not load the AI model: ${last?.message ?: last}. The file may be damaged or not suited to this phone - use 'Remove AI model', then download or pick it again.", last)
     }
 
     /** Blocking. Call from a background thread. */
     fun generate(ctx: Context, prompt: String, temperature: Double = 0.3): String {
         val e = ensure(ctx.applicationContext)
+        AiLog.add(ctx, "generating (${prompt.length} chars)")
         lastUse = System.currentTimeMillis()
         scheduleIdleClose()
         val conv = e.createConversation(ConversationConfig(samplerConfig = SamplerConfig(topK = 40, topP = 0.9, temperature = temperature)))
         active = conv
         try {
             val out = conv.sendMessage(prompt).toString()
+            AiLog.add(ctx, "generated ${out.length} chars")
             return out.replace(Regex("(?s)<think>.*?</think>"), "").trim()
         } finally {
             active = null
