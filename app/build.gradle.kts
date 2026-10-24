@@ -22,6 +22,14 @@ android {
         proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
     }
 
+    // fixed key so every build can be installed over the previous one (CI otherwise makes a new random debug key each time)
+    signingConfigs.getByName("debug") {
+        storeFile = file("inkly-debug.jks")
+        storePassword = "inklydebug"
+        keyAlias = "inkly"
+        keyPassword = "inklydebug"
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
