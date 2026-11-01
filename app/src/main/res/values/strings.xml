@@ -137,6 +137,7 @@
     <!-- Option to enable auto correction -->
     <string name="autocorrect">Auto-correction</string>
     <string name="ai">AI</string>
+    <string name="ai_reply_chip">Reply</string>
     <string name="ai_fix">Fix grammar</string>
     <string name="ai_tone">Change tone</string>
     <string name="ai_assist">AI assistants</string>

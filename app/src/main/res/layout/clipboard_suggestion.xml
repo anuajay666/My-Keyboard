@@ -32,6 +32,18 @@
         android:layout_height="wrap_content"
         android:visibility="gone"
         android:scaleType="centerInside" />
+    <TextView
+        android:id="@+id/clipboard_suggestion_reply"
+        android:text="@string/ai_reply_chip"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="6dp"
+        android:paddingHorizontal="10dp"
+        android:paddingVertical="3dp"
+        android:visibility="gone"
+        android:textStyle="bold"
+        android:background="@drawable/ai_reply_chip_background"
+        style="?android:attr/textAppearanceSmall" />
     <ImageView
         android:id="@+id/clipboard_suggestion_close"
         android:contentDescription="@string/spoken_clipboard_suggestion"

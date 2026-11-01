@@ -1,0 +1,1 @@
+S-reply | 2026-11-01 | done (untested on phone) | Reply chip on the clipboard suggestion opens the panel on the Reply tab and writes 3 replies at once; inserts at the cursor | needed a separate-process handoff

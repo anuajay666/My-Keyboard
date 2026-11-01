@@ -234,6 +234,17 @@ class ClipboardHistoryManager(
             imageView.setOnClickListener(onClickListener)
         }
 
+        if (hasText && !isClipSensitive(inputType)) {
+            // Inkly: offer replies to the copied message
+            val replyChip = binding.clipboardSuggestionReply
+            replyChip.isVisible = true
+            replyChip.setOnClickListener {
+                dontShowCurrentSuggestion = true
+                binding.root.isGone = true
+                helium314.keyboard.ai.AiLauncher.launchReply(latinIME, content.toString())
+            }
+        }
+
         val closeButton = binding.clipboardSuggestionClose
         closeButton.setImageDrawable(KeyboardIconsSet.instance.getIconDrawable(ToolbarKey.CLOSE_HISTORY.name.lowercase()))
         closeButton.layoutParams.width = textView.lineHeight // scale the icon to the text
@@ -242,6 +253,7 @@ class ClipboardHistoryManager(
 
         val colors = latinIME.mSettings.current.mColors
         textView.setTextColor(colors.get(ColorType.KEY_TEXT))
+        binding.clipboardSuggestionReply.setTextColor(colors.get(ColorType.KEY_TEXT))
         clipIcon?.let { colors.setColor(it, ColorType.CLIPBOARD_SUGGESTION_ICON) }
         colors.setColor(closeButton, ColorType.REMOVE_SUGGESTION_ICON)
         colors.setBackground(binding.root, ColorType.CLIPBOARD_SUGGESTION_BACKGROUND)

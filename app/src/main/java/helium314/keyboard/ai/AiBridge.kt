@@ -104,6 +104,15 @@ object AiLauncher {
         ime.startActivity(Intent(ime, AiActivity::class.java).putExtra("tab", tab).putExtra("autorun", autorun).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP))
     }
 
+    /** Opens the Reply tab with [message] as the text to answer; the result is inserted at the cursor. */
+    @JvmStatic
+    fun launchReply(ime: InputMethodService, message: String) {
+        try { AiBridge.writeSession(ime, AiSession(message.take(MAX_CHARS), Scope.CURSOR)) } catch (e: Throwable) { AiLog.add(ime, "session write failed: $e") }
+        ime.requestHideSelf(0)
+        ime.startActivity(Intent(ime, AiActivity::class.java).putExtra("tab", 4).putExtra("autorun", true)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP))
+    }
+
     @JvmStatic
     fun applyPending(ime: InputMethodService) {
         val p = AiBridge.takePending(ime) ?: return

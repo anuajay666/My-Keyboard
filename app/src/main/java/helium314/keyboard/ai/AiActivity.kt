@@ -224,7 +224,7 @@ private fun AiScreen(session: AiSession, initialTab: Int, autorun: Boolean, onCl
     androidx.compose.runtime.DisposableEffect(Unit) { onDispose { try { recognizer?.destroy() } catch (_: Throwable) {} } }
 
     LaunchedEffect(modelState) {
-        if (autorun && modelState == ModelState.Ready && text.isNotBlank() && lastTasks.isEmpty()) start(listOf(AiCatalog.fix), text)
+        if (autorun && modelState == ModelState.Ready && text.isNotBlank() && lastTasks.isEmpty()) start(if (initialTab == 4) AiCatalog.replyStyles else listOf(AiCatalog.fix), text)
     }
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) AiModelManager.importFrom(ctx, uri) }
 

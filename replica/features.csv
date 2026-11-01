@@ -10,7 +10,7 @@ Free tier with usage limits,billing,must,yes,"skip - everything unlocked, no lim
 Premium subscription via Play Billing,billing,must,yes,"skip - everything unlocked, no billing",From $4.99/month per pricing meta; plan details unverified
 Custom tone added by the user,AI writing,should,yes,yes,
 Create custom AI assistant with own instructions,AI writing,should,yes,yes,
-Clever Reply: suggested replies to last message,AI writing,should,yes,"partial - paste message, 3 replies; no clipboard Reply chip yet",Needs Accessibility permission
+Clever Reply: suggested replies to last message,AI writing,should,yes,yes - Reply chip on copied text (untested on phone); no screen-reading by design,Needs Accessibility permission
 Expand a short draft into a full reply,AI writing,should,yes,yes,
 AI translation preserving tone (40+ languages),AI writing,should,yes,"yes, 44",
 Voice typing with cleanup (punctuation fillers lists),voice,should,yes,"partial - own mic code, untested",
