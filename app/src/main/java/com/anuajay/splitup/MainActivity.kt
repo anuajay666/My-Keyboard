@@ -11,6 +11,17 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.rememberSwipeToDismissBoxState
+import androidx.compose.ui.draw.zIndex
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -131,26 +142,77 @@ private fun App(groups: List<Group>, shared: Uri?, clearShared: () -> Unit, onCh
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun Home(groups: List<Group>, onOpen: (String) -> Unit, onChange: (List<Group>) -> Unit) {
     var adding by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf<Group?>(null) }
+    var renaming by remember { mutableStateOf<Group?>(null) }
+    val listState = rememberLazyListState()
+    var order by remember(groups) { mutableStateOf(groups) }
+    var dragId by remember { mutableStateOf<String?>(null) }
+    var dragOffset by remember { mutableStateOf(0f) }
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().padding(16.dp)) {
             Text("SplitUp", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
             Text("Split bills with friends. No limits, no ads, no account.", fontSize = 14.sp)
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(8.dp))
             if (groups.isEmpty()) Text("No groups yet. Tap + to make one (for example 'Goa trip' or 'Flat').")
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(groups, key = { it.id }) { g ->
+            else Text("Swipe a group left to delete it. Hold and drag to move it up or down.", fontSize = 12.sp)
+            Spacer(Modifier.height(8.dp))
+            LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                items(order, key = { it.id }) { g ->
                     val total = g.expenses.sumOf { it.amount }
-                    Card(Modifier.fillMaxWidth().clickable { onOpen(g.id) }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                        Row(Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text(g.name, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                                Text("${g.members.size} people · ${g.expenses.size} expenses · ${Money.format(total)} total", fontSize = 13.sp)
+                    val dismiss = rememberSwipeToDismissBoxState(confirmValueChange = { v ->
+                        if (v == SwipeToDismissBoxValue.EndToStart) deleting = g
+                        false // always snap back; the group is only removed after confirming
+                    })
+                    val dragging = dragId == g.id
+                    SwipeToDismissBox(
+                        state = dismiss,
+                        modifier = Modifier.animateItem().zIndex(if (dragging) 1f else 0f).graphicsLayer { translationY = if (dragging) dragOffset else 0f },
+                        enableDismissFromStartToEnd = false,
+                        backgroundContent = {
+                            Box(Modifier.fillMaxSize().background(Color(0xFFB91C1C), RoundedCornerShape(12.dp)).padding(end = 24.dp), contentAlignment = Alignment.CenterEnd) {
+                                Text("Delete", color = Color.White, fontWeight = FontWeight.Bold)
                             }
-                            TextButton(onClick = { deleting = g }) { Text("Delete") }
+                        },
+                    ) {
+                        Card(
+                            Modifier.fillMaxWidth().clickable { onOpen(g.id) }.pointerInput(g.id) {
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = { dragId = g.id; dragOffset = 0f },
+                                    onDrag = { change, amount ->
+                                        change.consume()
+                                        dragOffset += amount.y
+                                        val info = listState.layoutInfo.visibleItemsInfo
+                                        val cur = info.firstOrNull { it.key == g.id }
+                                        if (cur != null) {
+                                            val centre = cur.offset + cur.size / 2f + dragOffset
+                                            val target = info.firstOrNull { it.key != g.id && centre >= it.offset && centre <= it.offset + it.size }
+                                            if (target != null) {
+                                                val from = order.indexOfFirst { it.id == g.id }
+                                                val to = order.indexOfFirst { it.id == target.key }
+                                                if (from >= 0 && to >= 0) {
+                                                    order = order.toMutableList().also { l -> l.add(to, l.removeAt(from)) }
+                                                    dragOffset += (cur.offset - target.offset).toFloat()
+                                                }
+                                            }
+                                        }
+                                    },
+                                    onDragEnd = { dragId = null; dragOffset = 0f; onChange(order) },
+                                    onDragCancel = { dragId = null; dragOffset = 0f; onChange(order) },
+                                )
+                            },
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                        ) {
+                            Row(Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(g.name, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                                    Text("${g.members.size} people · ${g.expenses.size} expenses · ${Money.format(total)} total", fontSize = 13.sp)
+                                }
+                                TextButton(onClick = { renaming = g }) { Text("Edit") }
+                            }
                         }
                     }
                 }
@@ -165,6 +227,16 @@ private fun Home(groups: List<Group>, onOpen: (String) -> Unit, onChange: (List<
         confirmButton = { TextButton(onClick = { onChange(groups.filter { it.id != d.id }); deleting = null }) { Text("Delete") } },
         dismissButton = { TextButton(onClick = { deleting = null }) { Text("Keep") } },
     ) }
+    renaming?.let { r ->
+        var name by remember(r.id) { mutableStateOf(r.name) }
+        AlertDialog(
+            onDismissRequest = { renaming = null },
+            title = { Text("Edit group") },
+            text = { OutlinedTextField(name, { name = it }, label = { Text("Group name") }, singleLine = true) },
+            confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = { onChange(groups.map { if (it.id == r.id) it.copy(name = name.trim()) else it }); renaming = null }) { Text("Save") } },
+            dismissButton = { TextButton(onClick = { renaming = null }) { Text("Cancel") } },
+        )
+    }
     if (adding) NewGroupDialog(onDismiss = { adding = false }) { name, people ->
         val members = people.map { Member(newId(), it) }
         onChange(groups + Group(newId(), name, members))
