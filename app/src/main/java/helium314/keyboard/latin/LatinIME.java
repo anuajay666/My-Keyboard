@@ -547,6 +547,7 @@ public class LatinIME extends InputMethodService implements
         mDisplayContext = KtxKt.getDisplayContext(this);
         KeyboardSwitcher.init(this);
         super.onCreate();
+        SmartFix.seedOnce(this);
 
         loadSettings();
         mClipboardHistoryManager.onCreate();

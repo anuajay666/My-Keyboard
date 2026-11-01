@@ -39,6 +39,7 @@ import helium314.keyboard.latin.dictionary.Dictionary;
 import helium314.keyboard.latin.DictionaryFacilitator;
 import helium314.keyboard.latin.dictionary.DictionaryFactory;
 import helium314.keyboard.latin.LastComposedWord;
+import helium314.keyboard.latin.SmartFix;
 import helium314.keyboard.latin.LatinIME;
 import helium314.keyboard.latin.NgramContext;
 import helium314.keyboard.latin.RichInputConnection;
@@ -2336,7 +2337,13 @@ public final class InputLogic {
         }
         final SuggestedWordInfo autoCorrectionOrNull = mWordComposer.getAutoCorrectionOrNull();
         final String typedWord = mWordComposer.getTypedWord();
-        final String stringToCommit = (autoCorrectionOrNull != null) ? autoCorrectionOrNull.mWord : typedWord;
+        String stringToCommit = (autoCorrectionOrNull != null) ? autoCorrectionOrNull.mWord : typedWord;
+        if (autoCorrectionOrNull == null && typedWord != null && settingsValues.mAutoCorrectEnabled
+                && mWordComposer.isComposingWord() && !mWordComposer.isBatchMode() && !mWordComposer.isResumed()) {
+            // Inkly: always fix very common slips and chat shortcuts, whatever the dictionary says
+            final String fixed = SmartFix.fix(typedWord);
+            if (fixed != null) stringToCommit = fixed;
+        }
         if (stringToCommit != null) {
             final boolean isBatchMode = mWordComposer.isBatchMode();
             commitChosenWord(settingsValues, stringToCommit, LastComposedWord.COMMIT_TYPE_DECIDED_WORD, separator);
