@@ -150,6 +150,11 @@ private fun Home(groups: List<Group>, onOpen: (String) -> Unit, onChange: (List<
     var renaming by remember { mutableStateOf<Group?>(null) }
     val listState = rememberLazyListState()
     var order by remember(groups) { mutableStateOf(groups) }
+    // handlers below outlive recompositions, so they must always read the newest values, never an old copy
+    val orderNow by androidx.compose.runtime.rememberUpdatedState(order)
+    val groupsNow by androidx.compose.runtime.rememberUpdatedState(groups)
+    val onChangeNow by androidx.compose.runtime.rememberUpdatedState(onChange)
+    var moved by remember { mutableStateOf(false) }
     var dragId by remember { mutableStateOf<String?>(null) }
     var dragOffset by remember { mutableStateOf(0f) }
     Box(Modifier.fillMaxSize()) {
@@ -191,17 +196,18 @@ private fun Home(groups: List<Group>, onOpen: (String) -> Unit, onChange: (List<
                                             val centre = cur.offset + cur.size / 2f + dragOffset
                                             val target = info.firstOrNull { it.key != g.id && centre >= it.offset && centre <= it.offset + it.size }
                                             if (target != null) {
-                                                val from = order.indexOfFirst { it.id == g.id }
-                                                val to = order.indexOfFirst { it.id == target.key }
+                                                val from = orderNow.indexOfFirst { it.id == g.id }
+                                                val to = orderNow.indexOfFirst { it.id == target.key }
                                                 if (from >= 0 && to >= 0) {
-                                                    order = order.toMutableList().also { l -> l.add(to, l.removeAt(from)) }
+                                                    order = orderNow.toMutableList().also { l -> l.add(to, l.removeAt(from)) }
+                                                    moved = true
                                                     dragOffset += (cur.offset - target.offset).toFloat()
                                                 }
                                             }
                                         }
                                     },
-                                    onDragEnd = { dragId = null; dragOffset = 0f; onChange(order) },
-                                    onDragCancel = { dragId = null; dragOffset = 0f; onChange(order) },
+                                    onDragEnd = { dragId = null; dragOffset = 0f; if (moved) onChangeNow(orderNow); moved = false },
+                                    onDragCancel = { dragId = null; dragOffset = 0f; if (moved) onChangeNow(orderNow); moved = false },
                                 )
                             },
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -224,7 +230,7 @@ private fun Home(groups: List<Group>, onOpen: (String) -> Unit, onChange: (List<
         onDismissRequest = { deleting = null },
         title = { Text("Delete '${d.name}'?") },
         text = { Text("The group and all its ${d.expenses.size} expenses are removed from this phone. This cannot be undone.") },
-        confirmButton = { TextButton(onClick = { onChange(groups.filter { it.id != d.id }); deleting = null }) { Text("Delete") } },
+        confirmButton = { TextButton(onClick = { onChangeNow(groupsNow.filter { it.id != d.id }); deleting = null }) { Text("Delete") } },
         dismissButton = { TextButton(onClick = { deleting = null }) { Text("Keep") } },
     ) }
     renaming?.let { r ->
@@ -233,8 +239,13 @@ private fun Home(groups: List<Group>, onOpen: (String) -> Unit, onChange: (List<
             onDismissRequest = { renaming = null },
             title = { Text("Edit group") },
             text = { OutlinedTextField(name, { name = it }, label = { Text("Group name") }, singleLine = true) },
-            confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = { onChange(groups.map { if (it.id == r.id) it.copy(name = name.trim()) else it }); renaming = null }) { Text("Save") } },
-            dismissButton = { TextButton(onClick = { renaming = null }) { Text("Cancel") } },
+            confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = { onChangeNow(groupsNow.map { if (it.id == r.id) it.copy(name = name.trim()) else it }); renaming = null }) { Text("Save") } },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { renaming = null; deleting = r }) { Text("Delete group") }
+                    TextButton(onClick = { renaming = null }) { Text("Cancel") }
+                }
+            },
         )
     }
     if (adding) NewGroupDialog(onDismiss = { adding = false }) { name, people ->
