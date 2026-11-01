@@ -39,4 +39,5 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.activity:activity-compose:1.11.0")
     implementation("androidx.core:core-ktx:1.17.0")
+    implementation("com.google.mlkit:text-recognition:16.0.1") // reads screenshots on the phone, no internet needed
 }

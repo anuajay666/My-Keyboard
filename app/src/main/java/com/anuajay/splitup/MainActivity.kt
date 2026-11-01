@@ -9,6 +9,8 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -65,23 +67,35 @@ import androidx.compose.foundation.text.KeyboardOptions
 
 class MainActivity : ComponentActivity() {
     private var groups by mutableStateOf<List<Group>>(emptyList())
+    private var shared by mutableStateOf<Uri?>(null)
+
+    @Suppress("DEPRECATION")
+    private fun readShare(i: Intent?) {
+        if (i?.action == Intent.ACTION_SEND && i.type?.startsWith("image/") == true) shared = i.getParcelableExtra(Intent.EXTRA_STREAM)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         groups = Store.load(this)
-        setContent { SplitTheme { App(groups) { groups = it; Store.save(this, it) } } }
+        readShare(intent)
+        setContent { SplitTheme { App(groups, shared, { shared = null }) { groups = it; Store.save(this, it) } } }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        readShare(intent)
     }
 }
 
 /** Dates are stored as UTC midnight of the chosen day, so the day never shifts with time zones. */
-private fun todayUtc(): Long {
+fun todayUtc(): Long {
     val c = java.util.Calendar.getInstance()
     return java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply {
         clear(); set(c.get(java.util.Calendar.YEAR), c.get(java.util.Calendar.MONTH), c.get(java.util.Calendar.DAY_OF_MONTH))
     }.timeInMillis
 }
 
-private fun fmtDate(ms: Long): String =
+fun fmtDate(ms: Long): String =
     java.text.SimpleDateFormat("d MMM yyyy", java.util.Locale.ENGLISH).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.format(java.util.Date(ms))
 
 /** True when the expense was an equal split, so it can be re-split when someone joins. */
@@ -96,20 +110,31 @@ fun SplitTheme(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun App(groups: List<Group>, onChange: (List<Group>) -> Unit) {
+private fun App(groups: List<Group>, shared: Uri?, clearShared: () -> Unit, onChange: (List<Group>) -> Unit) {
     var openId by remember { mutableStateOf<String?>(null) }
+    var importUri by remember { mutableStateOf<Uri?>(null) }
     val open = groups.firstOrNull { it.id == openId }
     BackHandler(enabled = open != null) { openId = null }
     Box(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()) {
         if (open == null) Home(groups, onOpen = { openId = it }, onChange = onChange)
-        else GroupScreen(open, onBack = { openId = null }, onUpdate = { g -> onChange(groups.map { if (it.id == g.id) g else it }) },
+        else GroupScreen(open, importUri, onImportDone = { importUri = null }, onBack = { openId = null }, onUpdate = { g -> onChange(groups.map { if (it.id == g.id) g else it }) },
             onDelete = { onChange(groups.filter { it.id != open.id }); openId = null })
     }
+    // a screenshot shared into SplitUp from the gallery or WhatsApp: choose the trip first
+    if (shared != null && groups.isNotEmpty()) AlertDialog(
+        onDismissRequest = clearShared,
+        title = { Text("Add this screenshot to which group?") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(6.dp)) { groups.forEach { g ->
+            OutlinedButton(onClick = { importUri = shared; openId = g.id; clearShared() }, modifier = Modifier.fillMaxWidth()) { Text(g.name) } } } },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = clearShared) { Text("Cancel") } },
+    )
 }
 
 @Composable
 private fun Home(groups: List<Group>, onOpen: (String) -> Unit, onChange: (List<Group>) -> Unit) {
     var adding by remember { mutableStateOf(false) }
+    var deleting by remember { mutableStateOf<Group?>(null) }
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().padding(16.dp)) {
             Text("SplitUp", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
@@ -120,9 +145,12 @@ private fun Home(groups: List<Group>, onOpen: (String) -> Unit, onChange: (List<
                 items(groups, key = { it.id }) { g ->
                     val total = g.expenses.sumOf { it.amount }
                     Card(Modifier.fillMaxWidth().clickable { onOpen(g.id) }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                        Column(Modifier.padding(16.dp)) {
-                            Text(g.name, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                            Text("${g.members.size} people · ${g.expenses.size} expenses · ${Money.format(total)} total", fontSize = 13.sp)
+                        Row(Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(g.name, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                                Text("${g.members.size} people · ${g.expenses.size} expenses · ${Money.format(total)} total", fontSize = 13.sp)
+                            }
+                            TextButton(onClick = { deleting = g }) { Text("Delete") }
                         }
                     }
                 }
@@ -130,6 +158,13 @@ private fun Home(groups: List<Group>, onOpen: (String) -> Unit, onChange: (List<
         }
         FloatingActionButton(onClick = { adding = true }, modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp)) { Text("+", fontSize = 26.sp) }
     }
+    deleting?.let { d -> AlertDialog(
+        onDismissRequest = { deleting = null },
+        title = { Text("Delete '${d.name}'?") },
+        text = { Text("The group and all its ${d.expenses.size} expenses are removed from this phone. This cannot be undone.") },
+        confirmButton = { TextButton(onClick = { onChange(groups.filter { it.id != d.id }); deleting = null }) { Text("Delete") } },
+        dismissButton = { TextButton(onClick = { deleting = null }) { Text("Keep") } },
+    ) }
     if (adding) NewGroupDialog(onDismiss = { adding = false }) { name, people ->
         val members = people.map { Member(newId(), it) }
         onChange(groups + Group(newId(), name, members))
@@ -159,11 +194,14 @@ private fun NewGroupDialog(onDismiss: () -> Unit, onCreate: (String, List<String
 }
 
 @Composable
-private fun GroupScreen(g: Group, onBack: () -> Unit, onUpdate: (Group) -> Unit, onDelete: () -> Unit) {
+private fun GroupScreen(g: Group, startImport: Uri?, onImportDone: () -> Unit, onBack: () -> Unit, onUpdate: (Group) -> Unit, onDelete: () -> Unit) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     var tab by remember { mutableStateOf(0) }
     var addingExpense by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Expense?>(null) }
+    var scanUri by remember { mutableStateOf<Uri?>(startImport) }
+    androidx.compose.runtime.LaunchedEffect(startImport) { if (startImport != null) scanUri = startImport }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { u -> if (u != null) scanUri = u }
     var editMembers by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     val names = g.members.associate { it.id to it.name }
@@ -183,6 +221,7 @@ private fun GroupScreen(g: Group, onBack: () -> Unit, onUpdate: (Group) -> Unit,
             }
             when (tab) {
                 0 -> LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    item { OutlinedButton(onClick = { picker.launch("image/*") }, modifier = Modifier.fillMaxWidth()) { Text("Add from a screenshot (WhatsApp list or UPI payment)") } }
                     if (g.expenses.isEmpty()) item { Text("No expenses yet. Tap + to add the first one.") } else item { Text("Tap an expense to edit its date, amount or who shares it.", fontSize = 12.sp) }
                     items(g.expenses.sortedByDescending { it.date }, key = { it.id }) { e ->
                         Card(Modifier.fillMaxWidth().clickable { editing = e }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
@@ -216,6 +255,7 @@ private fun GroupScreen(g: Group, onBack: () -> Unit, onUpdate: (Group) -> Unit,
         }
         if (tab == 0) FloatingActionButton(onClick = { addingExpense = true }, modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp)) { Text("+", fontSize = 26.sp) }
     }
+    scanUri?.let { u -> ImportDialog(g, u, onDismiss = { scanUri = null; onImportDone() }, onUpdate = onUpdate) }
     if (addingExpense) ExpenseDialog(g, null, onDismiss = { addingExpense = false }) { e -> onUpdate(g.copy(expenses = g.expenses + e)); addingExpense = false }
     editing?.let { old -> ExpenseDialog(g, old, onDismiss = { editing = null }) { e -> onUpdate(g.copy(expenses = g.expenses.map { if (it.id == old.id) e else it })); editing = null } }
     if (editMembers) MembersDialog(g, onDismiss = { editMembers = false }, onUpdate = onUpdate, onDelete = { editMembers = false; confirmDelete = true })
@@ -228,10 +268,11 @@ private fun GroupScreen(g: Group, onBack: () -> Unit, onUpdate: (Group) -> Unit,
     )
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SettleTab(g: Group, names: Map<String, String>, ctx: Context, onUpdate: (Group) -> Unit) {
     val plan = Split.plan(g)
-    var needUpi by remember { mutableStateOf<Member?>(null) }
+    var needUpi by remember { mutableStateOf<Pair<Member, Transfer?>?>(null) }
     Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         if (plan.isEmpty()) Text("Everyone is settled up.")
         else Text("The fewest payments that settle everyone:", fontSize = 13.sp)
@@ -240,8 +281,9 @@ private fun SettleTab(g: Group, names: Map<String, String>, ctx: Context, onUpda
             Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("${names[t.from]} pays ${names[t.to]}  ${Money.format(t.amount)}", fontWeight = FontWeight.SemiBold)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { if (to.upi.isBlank()) needUpi = to else payViaUpi(ctx, to, t.amount, g.name) }) { Text("Pay with UPI") }
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { if (to.upi.isBlank()) needUpi = to to null else payViaUpi(ctx, to, t.amount, g.name) }) { Text("Pay with UPI") }
+                        OutlinedButton(onClick = { if (to.upi.isBlank()) needUpi = to to t else requestPayment(ctx, names[t.from] ?: "", to, t.amount, g.name) }) { Text("Request") }
                         OutlinedButton(onClick = { onUpdate(g.copy(payments = g.payments + Payment(newId(), t.from, t.to, t.amount, System.currentTimeMillis()))) }) { Text("Mark as paid") }
                     }
                 }
@@ -259,7 +301,7 @@ private fun SettleTab(g: Group, names: Map<String, String>, ctx: Context, onUpda
         }
         Text("Pay with UPI opens your UPI app with the amount filled in. You confirm the payment there. SplitUp never moves money. After paying, tap 'Mark as paid'.", fontSize = 12.sp)
     }
-    needUpi?.let { m ->
+    needUpi?.let { (m, req) ->
         var upi by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { needUpi = null },
@@ -267,13 +309,24 @@ private fun SettleTab(g: Group, names: Map<String, String>, ctx: Context, onUpda
             text = { OutlinedTextField(upi, { upi = it }, label = { Text("for example name@bank") }, singleLine = true) },
             confirmButton = {
                 TextButton(enabled = upi.contains("@"), onClick = {
-                    onUpdate(g.copy(members = g.members.map { if (it.id == m.id) it.copy(upi = upi.trim()) else it }))
+                    val saved = m.copy(upi = upi.trim())
+                    onUpdate(g.copy(members = g.members.map { if (it.id == m.id) saved else it }))
                     needUpi = null
+                    if (req != null) requestPayment(ctx, names[req.from] ?: "", saved, req.amount, g.name)
+                    else payViaUpi(ctx, saved, plan.firstOrNull { it.to == m.id }?.amount ?: 0L, g.name)
                 }) { Text("Save") }
             },
             dismissButton = { TextButton(onClick = { needUpi = null }) { Text("Cancel") } },
         )
     }
+}
+
+/** Sends a polite payment request through any app (WhatsApp, SMS…), with the amount and the UPI ID to pay. */
+private fun requestPayment(ctx: Context, fromName: String, to: Member, paise: Long, group: String) {
+    val link = Uri.Builder().scheme("upi").authority("pay").appendQueryParameter("pa", to.upi).appendQueryParameter("pn", to.name)
+        .appendQueryParameter("am", Money.plain(paise)).appendQueryParameter("cu", "INR").appendQueryParameter("tn", "SplitUp: $group").build()
+    val text = "Hi ${fromName.ifBlank { "there" }}, please pay ${Money.format(paise)} to ${to.name} for $group.\nUPI ID: ${to.upi}\nTap to pay: $link\n(sent from SplitUp)"
+    ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text), "Send payment request"))
 }
 
 private fun payViaUpi(ctx: Context, to: Member, paise: Long, note: String) {
@@ -361,6 +414,20 @@ private fun ExpenseDialog(g: Group, old: Expense?, onDismiss: () -> Unit, onSave
 private fun MembersDialog(g: Group, onDismiss: () -> Unit, onUpdate: (Group) -> Unit, onDelete: () -> Unit) {
     var newName by remember { mutableStateOf("") }
     var joining by remember { mutableStateOf<String?>(null) }
+    var removing by remember { mutableStateOf<Member?>(null) }
+    removing?.let { m ->
+        val paid = g.expenses.count { it.paidBy == m.id }
+        val pays = g.payments.count { it.from == m.id || it.to == m.id }
+        AlertDialog(
+            onDismissRequest = { removing = null },
+            title = { Text("Remove ${m.name}?") },
+            text = { Text("${m.name}'s share is taken out of the expenses they were part of (equal splits are shared again among the rest, so balances update). " +
+                (if (paid > 0) "$paid expense${if (paid == 1) "" else "s"} paid by ${m.name} will be deleted. " else "") +
+                (if (pays > 0) "$pays recorded payment${if (pays == 1) "" else "s"} with ${m.name} will be deleted. " else "") + "This cannot be undone.") },
+            confirmButton = { TextButton(onClick = { onUpdate(removeMember(g, m.id)); removing = null }) { Text("Remove") } },
+            dismissButton = { TextButton(onClick = { removing = null }) { Text("Keep") } },
+        )
+    }
     joining?.let { name -> JoinDialog(g, name, onDismiss = { joining = null }) { ng -> onUpdate(ng); joining = null; newName = "" } }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -371,7 +438,7 @@ private fun MembersDialog(g: Group, onDismiss: () -> Unit, onUpdate: (Group) -> 
                     val used = g.expenses.any { it.paidBy == m.id || m.id in it.shares } || g.payments.any { it.from == m.id || it.to == m.id }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) { Text(m.name); if (m.upi.isNotBlank()) Text(m.upi, fontSize = 12.sp) }
-                        if (!used && g.members.size > 2) TextButton(onClick = { onUpdate(g.copy(members = g.members.filter { it.id != m.id })) }) { Text("Remove") }
+                        if (g.members.size > 2) TextButton(onClick = { if (used) removing = m else onUpdate(g.copy(members = g.members.filter { it.id != m.id })) }) { Text("Remove") }
                     }
                 }
                 OutlinedTextField(newName, { newName = it }, label = { Text("Add a person") }, singleLine = true)
@@ -429,5 +496,27 @@ private fun JoinDialog(g: Group, name: String, onDismiss: () -> Unit, onDone: (G
             }) { Text("Add $name") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+
+/** Takes a person out of the group: their share leaves every expense, and what they paid or settled is deleted. */
+private fun removeMember(g: Group, id: String): Group {
+    val expenses = g.expenses.filter { it.paidBy != id }.map { e ->
+        if (id !in e.shares) e
+        else {
+            val equal = isEqualSplit(e)
+            val rest = e.shares.keys.filter { it != id }
+            when {
+                rest.isEmpty() -> e.copy(amount = 0L, shares = emptyMap())
+                equal -> e.copy(shares = Split.equal(e.amount, g.members.map { it.id }.filter { it in rest }))
+                else -> { val sh = e.shares - id; e.copy(amount = sh.values.sum(), shares = sh) }
+            }
+        }
+    }.filter { it.amount > 0 }
+    return g.copy(
+        members = g.members.filter { it.id != id },
+        expenses = expenses,
+        payments = g.payments.filter { it.from != id && it.to != id },
     )
 }
