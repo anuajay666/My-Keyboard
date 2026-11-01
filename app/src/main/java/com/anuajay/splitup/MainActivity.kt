@@ -399,13 +399,26 @@ private fun SettleTab(g: Group, names: Map<String, String>, ctx: Context, onUpda
                     else payViaUpi(ctx, saved, plan.firstOrNull { it.to == m.id }?.amount ?: 0L, g.name)
                 }) { Text("Save") }
             },
-            dismissButton = { TextButton(onClick = { needUpi = null }) { Text("Cancel") } },
+            dismissButton = {
+                Row {
+                    if (req != null) TextButton(onClick = {
+                        needUpi = null
+                        requestPayment(ctx, names[req.from] ?: "", m, req.amount, g.name)
+                    }) { Text("Send without UPI ID") }
+                    TextButton(onClick = { needUpi = null }) { Text("Cancel") }
+                }
+            },
         )
     }
 }
 
 /** Sends a polite payment request through any app (WhatsApp, SMS…), with the amount and the UPI ID to pay. */
 private fun requestPayment(ctx: Context, fromName: String, to: Member, paise: Long, group: String) {
+    if (to.upi.isBlank()) {
+        val plain = "Hi ${fromName.ifBlank { "there" }}, please pay ${Money.format(paise)} to ${to.name} for $group.\n(sent from SplitUp)"
+        ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, plain), "Send payment request"))
+        return
+    }
     val link = Uri.Builder().scheme("upi").authority("pay").appendQueryParameter("pa", to.upi).appendQueryParameter("pn", to.name)
         .appendQueryParameter("am", Money.plain(paise)).appendQueryParameter("cu", "INR").appendQueryParameter("tn", "SplitUp: $group").build()
     val text = "Hi ${fromName.ifBlank { "there" }}, please pay ${Money.format(paise)} to ${to.name} for $group.\nUPI ID: ${to.upi}\nTap to pay: $link\n(sent from SplitUp)"
