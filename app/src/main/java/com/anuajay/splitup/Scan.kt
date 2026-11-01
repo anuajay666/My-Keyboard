@@ -112,6 +112,104 @@ object Scan {
             .sortedWith(compareByDescending<Map.Entry<Long, Int>> { it.value }.thenByDescending { it.key }).first().key
     }
 
+    // ---- every line of a bill, nothing dropped ----
+    enum class Kind { ITEM, CHARGE, SUBTOTAL, TOTAL, INFO }
+    data class BillRow(val title: String, val amount: Long, val kind: Kind)
+
+    private val amt = Regex("""\d[\d,]*\.\d{2}""")
+    private val totalRe = Regex("""(?i)grand\s*total|net\s*amount|total\s*sale|net\s*payable|amount\s*payable|bill\s*amount|total\s*amount|amount\s*due|net\s*amt|total\s*amt""")
+    private val subRe = Regex("""(?i)sub\s*total|subtotal|total\s*qty""")
+    private val chargeRe = Regex("""(?i)\b(sgst|cgst|igst|gst|vat|cess|service|charge|charges|packing|delivery|tip|round|discount|tax)\b""")
+    private val infoRe = Regex("""(?i)unit\s*price|\brate\b|\bmrp\b""")
+    private val skipRe = Regex("""(?i)\b(ltr|ltrs|litre|liter|kg|quantity)\b""")
+    private val noiseRe = Regex("""(?i)thank|visit|signature|pin verified|consume|gstin|fssai|token|cashier|bill no|dine|assign|name:""")
+
+    fun isBill(raw: String): Boolean = !raw.contains("total expense", true) && billWords.containsMatchIn(raw) && amt.containsMatchIn(raw)
+
+    /** Every amount printed on a bill: items (qty × price columns handled), taxes, round off, sub total and totals. */
+    fun billRows(raw: String): List<BillRow> {
+        val ls = lines(raw)
+        val header = Regex("""(?i)\bitem\b.*(qty|price|amount)|\bqty\b""")
+        val start = ls.indexOfFirst { header.containsMatchIn(it) }.let { if (it < 0) 0 else it + 1 }
+        val rows = ArrayList<BillRow>()
+        val names = ArrayList<String>()
+        var cont = false // the last row is an item named on its own line; the next text-only line may continue the name
+        var itemNo = 0
+        for (idx in start until ls.size) {
+            val line = ls[idx]
+            val found = amt.findAll(line).toList()
+            if (found.isEmpty()) {
+                val isText = line.count { it.isLetter() } >= 3 && !noiseRe.containsMatchIn(line) && !totalRe.containsMatchIn(line) &&
+                    !chargeRe.containsMatchIn(line) && !subRe.containsMatchIn(line)
+                if (isText) {
+                    if (cont && rows.isNotEmpty() && rows.last().kind == Kind.ITEM && line.length <= 24) {
+                        rows[rows.lastIndex] = rows.last().copy(title = rows.last().title + " " + line.trim()); cont = false
+                    } else names += line.trim()
+                }
+                continue
+            }
+            val last = found.last()
+            var amount = money(last.value) ?: continue
+            if (Regex("""-\s*$""").containsMatchIn(line.substring(0, last.range.first))) amount = -amount
+            if (skipRe.containsMatchIn(line) && !subRe.containsMatchIn(line)) { cont = false; continue }
+            val head = line.substring(0, found.first().range.first).replace(Regex("""[\d\s]+$"""), "").trim().trim('-', ':', '=', '.', ' ')
+            val kind = when {
+                totalRe.containsMatchIn(line) -> Kind.TOTAL
+                subRe.containsMatchIn(line) -> Kind.SUBTOTAL
+                infoRe.containsMatchIn(line) -> Kind.INFO
+                chargeRe.containsMatchIn(line) -> Kind.CHARGE
+                else -> Kind.ITEM
+            }
+            when (kind) {
+                Kind.ITEM -> {
+                    itemNo++
+                    val sameLine = head.count { it.isLetter() } >= 3
+                    val title = if (sameLine) head else if (names.size in 1..2) names.joinToString(" ") else "Item $itemNo"
+                    names.clear()
+                    rows += BillRow(title, amount, kind); cont = sameLine
+                }
+                Kind.CHARGE -> { rows += BillRow(head.ifBlank { "Charge" }, amount, kind); cont = false }
+                Kind.TOTAL -> { rows += BillRow(head.ifBlank { "Total" }, amount, kind); cont = false }
+                Kind.SUBTOTAL -> { rows += BillRow("Sub total", amount, kind); cont = false }
+                Kind.INFO -> { rows += BillRow(head.ifBlank { "Rate" }, amount, kind); cont = false }
+            }
+        }
+        // a negative line (round off, discount) cannot be an expense: fold it into the row above so the total still matches
+        val out = ArrayList<BillRow>()
+        for (r in rows) {
+            if (r.amount < 0) {
+                val i = out.indexOfLast { (it.kind == Kind.ITEM || it.kind == Kind.CHARGE) && it.amount > 0 }
+                if (i >= 0) { out[i] = out[i].copy(title = out[i].title + " (incl. " + r.title.lowercase() + ")", amount = out[i].amount + r.amount); continue }
+            }
+            out += r
+        }
+        return out
+    }
+
+    /** Rows to show for a bill, with sensible ticks, plus a note when something does not add up. */
+    fun billDrafts(raw: String): Pair<List<Draft>, String?> {
+        val rows = billRows(raw)
+        val firstTotal = rows.indexOfFirst { it.kind == Kind.TOTAL }
+        val total = rows.getOrNull(firstTotal)?.amount ?: billTotal(raw)
+        val pay = rows.filter { it.kind == Kind.ITEM || it.kind == Kind.CHARGE }
+        val sumPay = pay.sumOf { it.amount }
+        val itemsOk = pay.isNotEmpty() && (total == null || kotlin.math.abs(sumPay - total) <= 100)
+        val note = if (pay.isNotEmpty() && total != null && !itemsOk)
+            "The items add up to ${Money.format(sumPay)} but the bill total is ${Money.format(total)}, so only the total is ticked. Check the lines." else null
+        val shop = merchant(raw)
+        val drafts = ArrayList<Draft>()
+        rows.forEachIndexed { i, r ->
+            val include = when (r.kind) {
+                Kind.ITEM, Kind.CHARGE -> itemsOk
+                Kind.TOTAL -> !itemsOk && i == firstTotal
+                else -> false
+            }
+            drafts += Draft(if (include && r.kind == Kind.TOTAL) (shop ?: r.title) else r.title, r.amount, include)
+        }
+        if (firstTotal < 0 && !itemsOk && total != null) drafts += Draft(shop ?: "Bill", total, true)
+        return drafts to note
+    }
+
     /** First line that looks like a shop name (mostly letters), used as the title of a bill. */
     fun merchant(raw: String): String? = lines(raw).firstOrNull { l ->
         l.length in 5..40 && l.count { it.isLetter() } >= l.length * 0.7 &&

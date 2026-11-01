@@ -58,6 +58,8 @@ fun ImportDialog(g: Group, uri: Uri, onDismiss: () -> Unit, onUpdate: (Group) ->
     var payTo by remember { mutableStateOf(g.members.last().id) }
     var payAmount by remember { mutableStateOf("") }
     var showRaw by remember { mutableStateOf(false) }
+    var billTotal by remember { mutableStateOf<Long?>(null) }
+    var billNote by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(uri) {
         val t = Scan.ocr(ctx, uri)
@@ -82,8 +84,11 @@ fun ImportDialog(g: Group, uri: Uri, onDismiss: () -> Unit, onUpdate: (Group) ->
                 if (amount != null) rows.value = listOf(Row3(newId(), cp ?: "Payment", Money.plain(amount), true))
                 amount?.let { payAmount = Money.plain(it) }
             }
-        } else if (bill != null) {
-            rows.value = listOf(Row3(newId(), Scan.merchant(t) ?: "Bill", Money.plain(bill), true))
+        } else if (bill != null || Scan.isBill(t)) {
+            val (drafts, note) = Scan.billDrafts(t)
+            rows.value = drafts.map { Row3(newId(), it.title, Money.plain(it.amount), it.include) }
+            billTotal = bill
+            billNote = note
         } else {
             rows.value = Scan.expenses(t).map { Row3(newId(), it.title, Money.plain(it.amount), it.include) }
             Scan.matchMember(g.members, Scan.payerName(t))?.let { paidBy = it.id }
@@ -128,6 +133,13 @@ fun ImportDialog(g: Group, uri: Uri, onDismiss: () -> Unit, onUpdate: (Group) ->
                                 }
                             }
                         }
+                        billTotal?.let { bt ->
+                            val sel = chosen.sumOf { Money.parse(it.amount) ?: 0L }
+                            val ok = kotlin.math.abs(sel - bt) <= 100
+                            Text("Ticked ${Money.format(sel)} · bill total ${Money.format(bt)}" + if (ok) "  ✓" else "  (does not match)", fontSize = 12.sp,
+                                color = if (ok) androidx.compose.ui.graphics.Color(0xFF15803D) else androidx.compose.ui.graphics.Color(0xFFB91C1C))
+                        }
+                        billNote?.let { Text(it, fontSize = 12.sp) }
                         Text("Paid by", fontWeight = FontWeight.SemiBold)
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { g.members.forEach { m -> FilterChip(selected = paidBy == m.id, onClick = { paidBy = m.id }, label = { Text(m.name) }) } }
                         Text("Shared equally by", fontWeight = FontWeight.SemiBold)
