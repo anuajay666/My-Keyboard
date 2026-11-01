@@ -71,15 +71,76 @@ object Scan {
         Regex("""(?i)total\s+expenses?\s*[:\-]?\s*([A-Za-z]{2,})""").find(raw)?.groupValues?.get(1)
 
     fun looksLikePayment(raw: String): Boolean =
-        Regex("""(?i)(paid to|sent to|payment (successful|completed|done)|transaction (id|successful)|upi (ref|transaction)|money sent|received from)""").containsMatchIn(raw)
+        Regex("""(?i)(paid to|sent to|payment (successful|completed|done)|transaction (id|successful)|upi (ref|transaction)|money sent|received from|google pay|phonepe|paytm|\bcompleted\b.*\n)""").containsMatchIn(raw)
+
+    private fun lines(raw: String) = raw.lines().map { it.trim() }.filter { it.isNotEmpty() }
+
+    /** "1905.00", "35,000", "1905, 00" (a misread dot) -> paise */
+    private fun money(token: String): Long? {
+        val t = token.trim()
+        val dec = Regex("""^(\d[\d,]*)[.,]\s?(\d{2})$""").find(t)
+        val clean = if (dec != null) dec.groupValues[1].replace(",", "") + "." + dec.groupValues[2] else t.replace(",", "")
+        return Money.parse(clean)
+    }
+    private val moneyTok = Regex("""\d[\d,]*(?:[.,]\s?\d{2})?""")
+    private fun lastMoney(s: String): Long? = moneyTok.findAll(s).mapNotNull { money(it.value) }.lastOrNull()
+
+    private val totalWords = listOf("grand total", "net amount", "net payable", "amount payable", "total sale", "bill amount", "total amount", "net amt", "total amt", "amount due", "grand")
+
+    /** A shop bill / fuel slip / restaurant receipt: the amount to pay, found by its label (Grand Total, Net Amount…). */
+    fun billTotal(raw: String): Long? {
+        if (raw.contains("total expense", true)) return null // that is the WhatsApp list format
+        val ls = lines(raw)
+        for (k in totalWords) {
+            val i = ls.indexOfFirst { it.lowercase().contains(k) }
+            if (i < 0) continue
+            for (j in i..minOf(i + 3, ls.lastIndex)) {
+                val line = if (j == i) ls[j].substring(ls[j].lowercase().indexOf(k) + k.length) else ls[j]
+                lastMoney(line)?.let { return it }
+            }
+        }
+        return null
+    }
+
+    /** First line that looks like a shop name (mostly letters), used as the title of a bill. */
+    fun merchant(raw: String): String? = lines(raw).firstOrNull { l ->
+        l.length in 5..40 && l.count { it.isLetter() } >= l.length * 0.7 &&
+            !Regex("""(?i)bill|invoice|receipt|tax|date|cashier|name|you|reply""").containsMatchIn(l)
+    }?.trim(' ', '-', '~', '.')
 
     fun paymentAmount(raw: String): Long? {
-        Regex("""₹\s*([\d,]+(?:\.\d{1,2})?)""").find(raw)?.groupValues?.get(1)?.let { paise(it) }?.let { return it }
-        return num.findAll(raw).mapNotNull { paise(it.value) }.maxOrNull()
+        Regex("""[₹&®]\s*([\d,]+(?:\.\d{1,2})?)""").find(raw)?.groupValues?.get(1)?.let { money(it) }?.let { return it }
+        val ls = lines(raw)
+        val to = ls.indexOfFirst { it.startsWith("to ", true) }
+        if (to >= 0) for (j in to + 1..minOf(to + 3, ls.lastIndex)) {
+            if (Regex("""^\D{0,2}[\d,]{1,9}(\.\d{1,2})?$""").matches(ls[j])) money(ls[j].filter { it.isDigit() || it == '.' || it == ',' })?.let { return it }
+        }
+        // last resort: a short number (not an id, a date or a time)
+        return moneyTok.findAll(raw).map { it.value }.filter { it.filter(Char::isDigit).length in 1..7 }.mapNotNull { money(it) }.firstOrNull()
     }
 
     fun paymentCounterparty(raw: String): String? =
-        Regex("""(?i)(?:paid to|sent to|to|received from|from)\s*[:\-]?\s*([A-Za-z][A-Za-z .]{1,30})""").find(raw)?.groupValues?.get(1)?.trim()
+        Regex("""(?im)^\s*(?:paid to|sent to|to|received from)\s*:?\s+(.+)$""").find(raw)?.groupValues?.get(1)?.substringBefore('(')?.trim()?.ifBlank { null }
+
+    fun paymentFrom(raw: String): String? =
+        Regex("""(?im)^\s*from\s*:?\s*(.+)$""").find(raw)?.groupValues?.get(1)?.substringBefore('(')?.trim()?.ifBlank { null }
+
+    /** Date printed on the bill or payment screen → UTC midnight, or null. */
+    fun dateOf(raw: String): Long? {
+        fun utc(d: Int, m: Int, y: Int): Long? {
+            if (m !in 1..12 || d !in 1..31 || y !in 2000..2100) return null
+            return java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply { clear(); set(y, m - 1, d) }.timeInMillis
+        }
+        Regex("""\b(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})\b""").find(raw)?.let {
+            val y = it.groupValues[3].toInt().let { v -> if (v < 100) 2000 + v else v }
+            utc(it.groupValues[1].toInt(), it.groupValues[2].toInt(), y)?.let { r -> return r }
+        }
+        Regex("""\b(\d{1,2})\s+([A-Za-z]{3,9})\.?,?\s+(\d{4})\b""").find(raw)?.let {
+            val m = listOf("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec").indexOf(it.groupValues[2].take(3).lowercase()) + 1
+            utc(it.groupValues[1].toInt(), m, it.groupValues[3].toInt())?.let { r -> return r }
+        }
+        return null
+    }
 
     fun matchMember(members: List<Member>, name: String?): Member? {
         if (name.isNullOrBlank()) return null

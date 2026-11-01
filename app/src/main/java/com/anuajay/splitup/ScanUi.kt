@@ -62,11 +62,27 @@ fun ImportDialog(g: Group, uri: Uri, onDismiss: () -> Unit, onUpdate: (Group) ->
         val t = Scan.ocr(ctx, uri)
         if (t.isNullOrBlank()) { failed = true; loading = false; return@LaunchedEffect }
         raw = t
-        isPayment = Scan.looksLikePayment(t)
-        if (isPayment) {
-            Scan.paymentAmount(t)?.let { payAmount = Money.plain(it) }
-            Scan.matchMember(g.members, Scan.paymentCounterparty(t))?.let { payTo = it.id }
-            if (payTo == paidBy) paidBy = g.members.first { it.id != payTo }.id
+        Scan.dateOf(t)?.let { date = it }
+        val bill = Scan.billTotal(t)
+        if (Scan.looksLikePayment(t)) {
+            // a UPI screen: if it is to someone in the group it is a settlement, otherwise it is a spend (shop, hotel…)
+            val amount = Scan.paymentAmount(t)
+            val cp = Scan.paymentCounterparty(t)
+            val toMember = Scan.matchMember(g.members, cp)
+            val fromMember = Scan.matchMember(g.members, Scan.paymentFrom(t))
+            if (toMember != null) {
+                isPayment = true
+                payTo = toMember.id
+                fromMember?.let { paidBy = it.id }
+                if (paidBy == payTo) paidBy = g.members.first { it.id != payTo }.id
+                amount?.let { payAmount = Money.plain(it) }
+            } else {
+                fromMember?.let { paidBy = it.id }
+                if (amount != null) rows.value = listOf(Row3(newId(), cp ?: "Payment", Money.plain(amount), true))
+                amount?.let { payAmount = Money.plain(it) }
+            }
+        } else if (bill != null) {
+            rows.value = listOf(Row3(newId(), Scan.merchant(t) ?: "Bill", Money.plain(bill), true))
         } else {
             rows.value = Scan.expenses(t).map { Row3(newId(), it.title, Money.plain(it.amount), it.include) }
             Scan.matchMember(g.members, Scan.payerName(t))?.let { paidBy = it.id }
