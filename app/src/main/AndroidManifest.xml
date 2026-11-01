@@ -97,6 +97,11 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
             android:theme="@style/TransparentActivityTheme" android:excludeFromRecents="true"
             android:windowSoftInputMode="adjustResize" android:configChanges="orientation|screenSize|keyboardHidden|uiMode|smallestScreenSize|screenLayout"/>
 
+        <activity android:name="helium314.keyboard.ai.VoiceActivity" android:exported="false"
+            android:process=":ai" android:taskAffinity="" android:launchMode="singleTask"
+            android:theme="@style/TransparentActivityTheme" android:excludeFromRecents="true"
+            android:configChanges="orientation|screenSize|keyboardHidden|uiMode|smallestScreenSize|screenLayout"/>
+
         <!-- Broadcast receivers -->
         <receiver android:name="SystemBroadcastReceiver"
                 android:exported="true">

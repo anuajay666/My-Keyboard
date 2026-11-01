@@ -1418,7 +1418,8 @@ public class LatinIME extends InputMethodService implements
     // completely replace #onCodeInput.
     public void onEvent(@NonNull final Event event) {
         if (KeyCode.VOICE_INPUT == event.getKeyCode()) {
-            mRichImm.switchToShortcutIme(this);
+            launchVoice(); // Inkly: own voice typing instead of handing over to another keyboard
+            return;
         }
         InputTransaction completeInputTransaction =
                 mInputLogic.onCodeInput(mSettings.getCurrent(), event, mKeyboardSwitcher.getKeyboardCapsMode(), mHandler);
@@ -1731,6 +1732,14 @@ public class LatinIME extends InputMethodService implements
                 | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
                 | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         startActivity(intent);
+    }
+
+    public void launchVoice() {
+        mInputLogic.commitTyped(mSettings.getCurrent(), LastComposedWord.NOT_A_SEPARATOR);
+        final java.util.Locale loc = mRichImm.getCurrentSubtypeLocale();
+        String tag = loc.toLanguageTag();
+        if (loc.getCountry().isEmpty() && "en".equals(loc.getLanguage())) tag = "en-IN";
+        helium314.keyboard.ai.AiLauncher.launchVoice(this, tag);
     }
 
     public void launchAi(int tab, boolean autorun) {

@@ -114,6 +114,13 @@ object AiLauncher {
     }
 
     @JvmStatic
+    fun launchVoice(ime: InputMethodService, langTag: String) {
+        ime.requestHideSelf(0)
+        ime.startActivity(Intent(ime, VoiceActivity::class.java).putExtra("lang", langTag)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP))
+    }
+
+    @JvmStatic
     fun applyPending(ime: InputMethodService) {
         val p = AiBridge.takePending(ime) ?: return
         val ic = ime.currentInputConnection
