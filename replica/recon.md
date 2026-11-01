@@ -136,3 +136,11 @@ Only 3 Play reviews were visible, so nothing here is a real theme yet. Run /repl
 Screens 13 (partly inferred), flows 9, entities 7. Hard parts: (1) a real Android input method (IME) with solid typing, auto-correct and multi-language support; (2) Accessibility-service reading of the last message for Clever Reply, which is permission-sensitive on Play; (3) in-app voice capture plus cleanup; also subscriptions via Play Billing and keeping latency low on AI calls. Size: L for a full keyboard. M if you ship the AI actions on top of an existing open-source keyboard base and add the keyboard engine later.
 
 Next step: /replica-architect
+
+## APK recon (CleverType 8.27.0, from the manifest and file layout only)
+- Built on FlorisBoard (its layout and extension files are FlorisBoard's), min Android 7 (SDK 24). Same open-source base family as our first attempt.
+- Permissions show the feature set: internet (AI runs on their servers), microphone plus a foreground microphone service (voice typing), accessibility service and draw-over-apps (Clever Reply reads the screen), Play Billing (subscription), biometric (lock), notifications, ad ID (analytics/ads).
+- A "clever reply" tutorial video ships in the app, so Reply is a headline feature.
+- Many layouts bundled (Arabic to Kurdish and more); Malayalam is on our list.
+- Takeaways for Inkly: their paid AI lives on a server, so there is nothing local to unlock. Inkly runs its AI on the phone instead. No ads/analytics, no accessibility service (Reply works from copied text).
+- Not examined on purpose: billing/licence code, prompts, bundled assets. Nothing copied.
