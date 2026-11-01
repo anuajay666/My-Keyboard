@@ -136,7 +136,7 @@ enum class ToolbarMode {
 val toolbarKeyStrings = entries.associateWithTo(EnumMap(ToolbarKey::class.java)) { it.toString().lowercase(Locale.US) }
 
 val defaultToolbarPref by lazy {
-    val default = listOf(AI_FIX, AI_TONE, AI_ASSIST, AI_TRANSLATE, EMOJI, CLIPBOARD, SETTINGS, VOICE, UNDO, REDO, SELECT_WORD, COPY, PASTE, LEFT, RIGHT)
+    val default = listOf(AI_FIX, AI_TONE, AI_ASSIST, AI_TRANSLATE, EMOJI, CLIPBOARD, VOICE, AUTOCORRECT, ONE_HANDED, INCOGNITO, SETTINGS, UNDO, REDO, SELECT_WORD, COPY, PASTE, LEFT, RIGHT)
     val others = entries.filterNot { it in default || it == CLOSE_HISTORY }
     default.joinToString(Separators.ENTRY) { it.name + Separators.KV + true } + Separators.ENTRY +
             others.joinToString(Separators.ENTRY) { it.name + Separators.KV + false }
@@ -174,6 +174,14 @@ private fun upgradeToolbarPref(prefs: SharedPreferences, pref: String, default: 
             else
                 list.add("${keyWithSeparator}false")
         }
+    }
+    // Inkly: one-time, existing installs also get the quick autocorrect switch, one-handed mode and incognito on the toolbar
+    if (pref == Settings.PREF_TOOLBAR_KEYS && !prefs.getBoolean("inkly_toolbar_v2", false)) {
+        for (k in listOf(ToolbarKey.AUTOCORRECT, ToolbarKey.ONE_HANDED, ToolbarKey.INCOGNITO)) {
+            val i = list.indexOfFirst { it.startsWith(k.name + Separators.KV) }
+            if (i >= 0) list[i] = k.name + Separators.KV + "true"
+        }
+        prefs.edit { putBoolean("inkly_toolbar_v2", true) }
     }
     // likely not needed, but better prepare for possibility of key removal
     list.removeAll {
