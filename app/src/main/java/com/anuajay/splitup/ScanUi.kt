@@ -57,6 +57,7 @@ fun ImportDialog(g: Group, uri: Uri, onDismiss: () -> Unit, onUpdate: (Group) ->
     var pickDate by remember { mutableStateOf(false) }
     var payTo by remember { mutableStateOf(g.members.last().id) }
     var payAmount by remember { mutableStateOf("") }
+    var showRaw by remember { mutableStateOf(false) }
 
     LaunchedEffect(uri) {
         val t = Scan.ocr(ctx, uri)
@@ -134,6 +135,8 @@ fun ImportDialog(g: Group, uri: Uri, onDismiss: () -> Unit, onUpdate: (Group) ->
                             g.members.forEach { m -> FilterChip(selected = m.id in sharedBy, onClick = { sharedBy = if (m.id in sharedBy) sharedBy - m.id else sharedBy + m.id }, label = { Text(m.name) }) }
                         }
                     }
+                    TextButton(onClick = { showRaw = !showRaw }) { Text(if (showRaw) "Hide what the phone read" else "Show what the phone read") }
+                    if (showRaw) Text(raw, fontSize = 11.sp)
                     OutlinedButton(onClick = { pickDate = true }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) { Text("Date: ${fmtDate(date)}  (tap to change)") }
                 }
             }

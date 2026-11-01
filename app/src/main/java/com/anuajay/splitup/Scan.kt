@@ -87,19 +87,29 @@ object Scan {
 
     private val totalWords = listOf("grand total", "net amount", "net payable", "amount payable", "total sale", "bill amount", "total amount", "net amt", "total amt", "amount due", "grand")
 
+    private val decMoney = Regex("""\d[\d,]*[.,]\s?\d{2}\b""")
+    private fun lastDecimal(s: String): Long? = decMoney.findAll(s).mapNotNull { money(it.value) }.lastOrNull()
+    private val billWords = Regex("""(?i)\b(gst|gstin|invoice|bill|receipt|qty|tax|sale|total|amount|cashier|pump|sgst|cgst)\b""")
+
     /** A shop bill / fuel slip / restaurant receipt: the amount to pay, found by its label (Grand Total, Net Amount…). */
     fun billTotal(raw: String): Long? {
         if (raw.contains("total expense", true)) return null // that is the WhatsApp list format
         val ls = lines(raw)
+        val minimum = 1000L // ignore anything under ₹10 (battery %, quantities, pump numbers)
         for (k in totalWords) {
             val i = ls.indexOfFirst { it.lowercase().contains(k) }
             if (i < 0) continue
-            for (j in i..minOf(i + 3, ls.lastIndex)) {
-                val line = if (j == i) ls[j].substring(ls[j].lowercase().indexOf(k) + k.length) else ls[j]
-                lastMoney(line)?.let { return it }
-            }
+            // same line as the label: any amount
+            lastMoney(ls[i].substring(ls[i].lowercase().indexOf(k) + k.length))?.takeIf { it >= minimum }?.let { return it }
+            // the amount may sit on the next lines: only accept proper amounts with paise (1905.00), never bare numbers
+            for (j in i + 1..minOf(i + 3, ls.lastIndex)) lastDecimal(ls[j])?.takeIf { it >= minimum }?.let { return it }
         }
-        return null
+        // no label found: for something that looks like a bill, take the amount that is printed most often, else the largest
+        if (!billWords.containsMatchIn(raw)) return null
+        val all = ls.flatMap { l -> decMoney.findAll(l).mapNotNull { money(it.value) }.toList() }.filter { it >= minimum }
+        if (all.isEmpty()) return null
+        return all.groupingBy { it }.eachCount().entries
+            .sortedWith(compareByDescending<Map.Entry<Long, Int>> { it.value }.thenByDescending { it.key }).first().key
     }
 
     /** First line that looks like a shop name (mostly letters), used as the title of a bill. */
